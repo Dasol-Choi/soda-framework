@@ -41,7 +41,7 @@ Our framework reveals significant demographic biases in AI-generated objects. Th
 
 ## 🤖 Supported Models
 
-### **OpenAI GPT DALL-E**
+### **OpenAI GPT-image-1**
 - High-quality image generation
 - Requires OpenAI API key
 
