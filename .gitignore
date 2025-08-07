@@ -5,7 +5,7 @@
 outputs/
 prompts/
 
-# Image files
+# Image files (excluding assets folder)
 *.jpg
 *.jpeg
 *.png
@@ -13,6 +13,9 @@ prompts/
 *.bmp
 *.tiff
 *.webp
+!assets/*.png
+!assets/*.jpg
+!assets/*.jpeg
 
 # Environment and API keys
 .env
