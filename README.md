@@ -14,7 +14,17 @@ SODA is a systematic framework for analyzing bias in AI image generation models.
 - **Comprehensive bias analysis** using multiple metrics
 - **Configurable architecture** for easy extension
 
-![SODA Architecture](assets/soda_architecture.png)
+<p align="center">
+  <img src="assets/soda_architecture.png" width="95%" alt="SODA Architecture">
+</p>
+
+## 📊 Results
+
+Our framework reveals significant demographic biases in AI-generated objects. The analysis shows how different demographic cues affect visual attributes of generated images.
+
+<p align="center">
+  <img src="assets/main_figure.png" width="90%" alt="Main Results">
+</p>
 
 ## ✨ Features
 
@@ -93,12 +103,6 @@ python main_framework.py --model replicate.imagen4 --objects car laptop cup --im
 # Run comprehensive analysis
 python run_comprehensive_analysis.py
 ```
-
-## 📊 Results
-
-Our framework reveals significant demographic biases in AI-generated objects. The analysis shows how different demographic cues affect visual attributes of generated images.
-
-![Main Results](assets/main_figure.png)
 
 ## 📁 Project Structure
 
