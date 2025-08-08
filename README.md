@@ -13,7 +13,7 @@ SODA is a systematic framework for analyzing bias in AI image generation models.
 - **Multi-model image generation** (GPT, Imagen, Replicate models)
 - **Comprehensive bias analysis** using multiple metrics
 - **Configurable architecture** for easy extension
-- 
+  
 **🌐 [Interactive Demo](https://dasol-choi.github.io/soda-framework/)**: Browse 2,700+ generated images across different demographic contexts
 
 <p align="center">
