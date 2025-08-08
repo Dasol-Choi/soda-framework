@@ -123,7 +123,7 @@ SODA/
 ## 📚 Citation
 
 ```bibtex
-@misc{lee2025carsstereotypesauditingdemographic,
+@misc{choi2025soda,
       title={When Cars Have Stereotypes: Auditing Demographic Bias in Objects from Text-to-Image Models}, 
       author={Dasol Choi Jihwan Lee and Minjae Lee and Minsuk Kahng},
       year={2025},
