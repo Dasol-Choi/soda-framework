@@ -222,106 +222,128 @@ class GPTImageGenerator(BaseImageGenerator):
                     return False, str(e)
 
     def generate_all_images(self):
-        """Generate all images"""
+        """Generate all images with parallel processing"""
         df = self.load_prompts()
         if df is None:
-            return
+            return []
         
         log_data = self.load_progress_log()
         completed_set = {(e['prompt_index'], e['image_number']) for e in log_data.get("completed", [])}
         
         total_needed = len(df) * IMAGES_PER_PROMPT
         total_completed = len(completed_set)
-        total_generated = 0
-        total_failed = 0
+        remaining_images = total_needed - total_completed
         
         print(f"\n🚀 {self.object_name.upper()} image generation started")
+        print(f"🤖 Model: GPT Image-1")
         print(f"📊 Total needed: {total_needed}, Completed: {total_completed}")
-        print(f"🎯 Images to generate: {total_needed - total_completed}")
-        print("-" * 50)
+        print(f"🎯 Images to generate: {remaining_images}")
+        print("-" * 60)
         
+        total_generated = 0
+        total_failed = 0
+        total_skipped = 0
+        start_time = time.time()
+        
+        # Prepare tasks for parallel execution
+        tasks = []
         for idx, row in df.iterrows():
-            prompt = row['prompt']
-            level = row['level']
+            try:
+                prompt_text = str(row['prompt']).strip()
+                if not prompt_text or prompt_text.lower() in ['nan', 'none', 'null']:
+                    total_skipped += IMAGES_PER_PROMPT
+                    continue
+            except Exception:
+                total_skipped += IMAGES_PER_PROMPT
+                continue
+
+            level = row.get('level', 1)
             demographic = self.parse_demographic(row.get('demographic'))
-            
-            # Print prompt information
-            demo_info = ""
-            if demographic:
-                demo_type = demographic.get('type', '')
-                demo_value = demographic.get('value', '')
-                demo_info = f"[{demo_type}: {demo_value}]"
-            
-            print(f"\n📝 [{idx+1}/{len(df)}] L{level} {demo_info}")
-            print(f"   Prompt: {prompt}")
-            
+
             for img_num in range(1, IMAGES_PER_PROMPT + 1):
-                # Skip already completed images
                 if (idx, img_num) in completed_set:
-                    print(f"   ✅ img{img_num:02d} - already completed")
+                    total_skipped += 1
                     continue
                 
                 output_path = self.get_save_path(row, img_num)
-                
-                # Skip if file already exists
                 if os.path.exists(output_path):
-                    print(f"   ✅ img{img_num:02d} - file exists")
+                    total_skipped += 1
                     continue
                 
-                print(f"   🖼️ img{img_num:02d} generating...", end=" ")
+                tasks.append((idx, img_num, prompt_text, level, demographic, output_path, row))
+
+        # Execute tasks in parallel
+        # Use 5 workers for GPT to manage rate limits
+        MAX_WORKERS = 5
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_task = {
+                executor.submit(self._generate_single_image_task, task): task for task in tasks
+            }
+            
+            for i, future in enumerate(as_completed(future_to_task), 1):
+                idx, img_num, prompt_text, level, demographic, output_path, row = future_to_task[future]
                 
-                success, error = self.generate_single_image(prompt, output_path)
-                
-                # Create metadata
-                metadata = {
-                    "prompt_index": idx,
-                    "image_number": img_num,
-                    "prompt": prompt,
-                    "level": level,
-                    "level_name": row.get('level_name', ''),
-                    "object": row.get('object', self.object_name),
-                    "object_category": row.get('object_category', ''),
-                    "demographic_type": demographic.get('type') if demographic else None,
-                    "demographic_value": demographic.get('value') if demographic else None,
-                    "file_path": output_path,
-                    "generation_time": datetime.now().isoformat(),
-                    "success": success
-                }
-                
-                if success:
-                    total_generated += 1
-                    log_data["completed"].append(metadata)
-                    log_data["metadata"].append(metadata)
-                    print("✅ Success")
-                else:
+                try:
+                    success, error, generation_duration = future.result()
+                    
+                    metadata = {
+                        "prompt_index": idx,
+                        "image_number": img_num,
+                        "prompt": prompt_text,
+                        "level": level,
+                        "level_name": row.get('level_name', ''),
+                        "object": row.get('object', self.object_name),
+                        "object_category": row.get('object_category', ''),
+                        "demographic_type": demographic.get('type') if demographic else None,
+                        "demographic_value": demographic.get('value') if demographic else None,
+                        "file_path": output_path,
+                        "generation_time": datetime.now().isoformat(),
+                        "model": "GPT Image-1",
+                        "generation_duration_seconds": round(generation_duration, 2),
+                        "success": success
+                    }
+                    
+                    if success:
+                        total_generated += 1
+                        log_data["completed"].append(metadata)
+                        log_data["metadata"].append(metadata)
+                        print(f"✅ [{i}/{len(tasks)}] L{level} {prompt_text[:50]}... img{img_num:02d} Success ({generation_duration:.1f}s)")
+                    else:
+                        total_failed += 1
+                        metadata['error'] = error
+                        log_data["failed"].append(metadata)
+                        print(f"❌ [{i}/{len(tasks)}] L{level} {prompt_text[:50]}... img{img_num:02d} Failed: {error} ({generation_duration:.1f}s)")
+                        
+                except Exception as e:
+                    print(f"❌ [{i}/{len(tasks)}] Task error: {str(e)}")
                     total_failed += 1
-                    metadata['error'] = error
-                    log_data["failed"].append(metadata)
-                    print(f"❌ Failed: {error[:50]}")
-                
-                # Save log
-                self.save_progress_log(log_data)
-                
-                # Control API call interval
-                time.sleep(DELAY_BETWEEN_REQUESTS)
         
-        # Save final metadata
-        self.save_image_metadata(log_data["metadata"])
+        # Final save
+        self.save_progress_log(log_data)
         
-        print("\n" + "="*50)
+        # Calculate time statistics
+        total_time = time.time() - start_time
+        
+        print("\n" + "="*60)
         print(f"🎉 {self.object_name.upper()} image generation completed!")
         print(f"📊 Total generated: {total_generated}")
-        print(f"❌ Failed: {total_failed}") 
+        print(f"❌ Failed: {total_failed}")
+        print(f"⏭️ Skipped: {total_skipped}")
+        print(f"⏱️ Total elapsed time: {total_time:.1f} seconds")
         print(f"📁 Save location: {self.base_save_dir}")
-        print("="*50)
+        print("="*60)
         
         # Return list of generated file paths
-        generated_files = []
-        for metadata in log_data["metadata"]:
-            if metadata.get("success"):
-                generated_files.append(metadata.get("file_path"))
-        
+        generated_files = [entry['file_path'] for entry in log_data["completed"]]
         return generated_files
+
+    def _generate_single_image_task(self, task_data):
+        """Helper method for parallel image generation"""
+        idx, img_num, prompt_text, level, demographic, output_path, row = task_data
+        img_start_time = time.time()
+        success, error = self.generate_single_image(prompt_text, output_path)
+        generation_duration = time.time() - img_start_time
+        return success, error, generation_duration
 
     def generate_image(self, prompt: str, object_name: str, demographic_info: Optional[Dict] = None) -> str:
         """Unified interface for single image generation"""

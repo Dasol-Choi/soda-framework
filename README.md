@@ -128,7 +128,7 @@ python run_comprehensive_analysis.py
 - **Default**: 2 images per prompt
 - **Recommended for research**: 10-20 images per prompt for statistical significance
 - **Total images per object**: `10 prompts × images-per-prompt`
-- **Parallel processing**: Replicate models use 5 parallel workers for faster generation
+- **Parallel processing**: Both GPT and Replicate models use 5 parallel workers for faster generation
 
 ## 📁 Project Structure
 
