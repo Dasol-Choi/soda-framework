@@ -10,6 +10,8 @@ import requests
 from typing import List, Dict, Optional
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -1007,8 +1009,41 @@ class ReplicateImageGenerator(BaseImageGenerator):
 
 
 
-    def generate_all_images(self):
-        """Generate all images"""
+    def _generate_single_task(self, task_data):
+        """Generate a single image (for parallel processing)"""
+        idx, img_num, prompt, row, output_path = task_data
+        
+        img_start_time = time.time()
+        success, error = self.generate_single_image(prompt, output_path)
+        generation_time = time.time() - img_start_time
+        
+        level = row.get('level', 1)
+        demographic = self.parse_demographic(row.get('demographic'))
+        
+        # Create metadata
+        metadata = {
+            "prompt_index": idx,
+            "image_number": img_num,
+            "prompt": prompt,
+            "level": level,
+            "level_name": row.get('level_name', ''),
+            "object": row.get('object', self.object_name),
+            "object_category": row.get('object_category', ''),
+            "demographic_type": demographic.get('type') if demographic else None,
+            "demographic_value": demographic.get('value') if demographic else None,
+            "file_path": output_path,
+            "generation_time": datetime.now().isoformat(),
+            "model": self.model_info['name'],
+            "model_id": self.model_info['model_id'],
+            "generation_duration_seconds": round(generation_time, 2),
+            "success": success,
+            "error": error if not success else None
+        }
+        
+        return metadata, success
+
+    def generate_all_images(self, num_workers=5):
+        """Generate all images with parallel processing"""
         df = self.load_prompts()
         if df is None:
             return []
@@ -1022,108 +1057,76 @@ class ReplicateImageGenerator(BaseImageGenerator):
         
         print(f"\n🚀 {self.object_name.upper()} image generation started")
         print(f"🤖 Model: {self.model_info['name']}")
+        print(f"⚡ Parallel workers: {num_workers}")
         print(f"📊 Total needed: {total_needed}, Completed: {total_completed}")
         print(f"🎯 Images to generate: {remaining_images}")
         print("-" * 60)
         
-        total_generated = 0
-        total_failed = 0
-        total_skipped = 0
-        start_time = time.time()
-        
+        # Prepare tasks
+        tasks = []
         for idx, row in df.iterrows():
-            # Safely get prompt
             try:
                 prompt = row['prompt']
                 if pd.isna(prompt):
-                    print(f"   ❌ Row {idx}: Prompt is NaN. Skipping.")
-                    total_skipped += IMAGES_PER_PROMPT
                     continue
-                    
                 prompt = str(prompt).strip()
                 if prompt == "" or prompt.lower() in ['nan', 'none', 'null']:
-                    print(f"   ❌ Row {idx}: Invalid prompt. Skipping.")
-                    total_skipped += IMAGES_PER_PROMPT
                     continue
-                    
-            except Exception as e:
-                print(f"   ❌ Row {idx}: Prompt processing error. Skipping.")
-                total_skipped += IMAGES_PER_PROMPT
+            except:
                 continue
             
-            level = row.get('level', 1)
-            demographic = self.parse_demographic(row.get('demographic'))
-            
-            # Print prompt information
-            demo_info = ""
-            if demographic:
-                demo_type = demographic.get('type', '')
-                demo_value = demographic.get('value', '')
-                demo_info = f"[{demo_type}: {demo_value}]"
-            
-            print(f"\n📝 [{idx+1}/{len(df)}] L{level} {demo_info}")
-            print(f"   Prompt: {prompt}")
-            
             for img_num in range(1, IMAGES_PER_PROMPT + 1):
-                # Skip already completed images
                 if (idx, img_num) in completed_set:
-                    print(f"   ✅ img{img_num:02d} - already completed")
                     continue
                 
                 output_path = self.get_save_path(row, img_num)
-                
-                # Skip if file already exists
                 if os.path.exists(output_path):
-                    print(f"   ✅ img{img_num:02d} - file exists")
                     continue
                 
-                print(f"   🖼️ img{img_num:02d} generating...", end=" ")
+                tasks.append((idx, img_num, prompt, row, output_path))
+        
+        print(f"📋 Tasks to process: {len(tasks)}")
+        
+        total_generated = 0
+        total_failed = 0
+        start_time = time.time()
+        lock = threading.Lock()
+        
+        # Process tasks in parallel
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            future_to_task = {executor.submit(self._generate_single_task, task): task for task in tasks}
+            
+            for i, future in enumerate(as_completed(future_to_task), 1):
+                task = future_to_task[future]
+                idx, img_num, prompt, row, output_path = task
                 
-                img_start_time = time.time()
-                success, error = self.generate_single_image(prompt, output_path)
-                generation_time = time.time() - img_start_time
-                
-                # Create metadata
-                metadata = {
-                    "prompt_index": idx,
-                    "image_number": img_num,
-                    "prompt": prompt,
-                    "level": level,
-                    "level_name": row.get('level_name', ''),
-                    "object": row.get('object', self.object_name),
-                    "object_category": row.get('object_category', ''),
-                    "demographic_type": demographic.get('type') if demographic else None,
-                    "demographic_value": demographic.get('value') if demographic else None,
-                    "file_path": output_path,
-                    "generation_time": datetime.now().isoformat(),
-                    "model": self.model_info['name'],
-                    "model_id": self.model_info['model_id'],
-                    "generation_duration_seconds": round(generation_time, 2),
-                    "success": success
-                }
-                
-                if success:
-                    total_generated += 1
-                    log_data["completed"].append(metadata)
-                    log_data["metadata"].append(metadata)
-                    print(f"✅ Success ({generation_time:.1f}s)")
-                else:
+                try:
+                    metadata, success = future.result()
+                    
+                    with lock:
+                        if success:
+                            total_generated += 1
+                            log_data["completed"].append(metadata)
+                            print(f"✅ [{i}/{len(tasks)}] idx{idx+1:03d}_img{img_num:02d} ({total_generated} generated)")
+                        else:
+                            total_failed += 1
+                            log_data["failed"].append(metadata)
+                            print(f"❌ [{i}/{len(tasks)}] idx{idx+1:03d}_img{img_num:02d} - {metadata.get('error', 'Unknown error')}")
+                        
+                        # Save progress every 10 images
+                        if (total_generated + total_failed) % 10 == 0:
+                            self.save_progress_log(log_data)
+                    
+                except Exception as e:
+                    print(f"❌ [{i}/{len(tasks)}] Task error: {str(e)}")
                     total_failed += 1
-                    metadata['error'] = error
-                    log_data["failed"].append(metadata)
-                    print(f"❌ Failed: {error[:50]} ({generation_time:.1f}s)")
-                
-                # Save log
-                self.save_progress_log(log_data)
-                
-                # Control API call interval
-                time.sleep(DELAY_BETWEEN_REQUESTS)
         
-        # Save final metadata
-        self.save_image_metadata(log_data["metadata"])
+        # Final save
+        self.save_progress_log(log_data)
         
-                # Calculate time statistics
+        # Calculate time statistics
         total_time = time.time() - start_time
+        total_skipped = 0
         
         print("\n" + "="*60)
         print(f"🎉 {self.object_name.upper()} image generation completed!")

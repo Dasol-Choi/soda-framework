@@ -99,6 +99,9 @@ python main_framework.py --model replicate.flux-2-pro --objects car laptop
 # Generate for new objects
 python main_framework.py --model gpt --objects sofa clock toaster
 
+# Specify number of images per prompt (default: 2)
+python main_framework.py --model replicate.flux-2-pro --objects car --images-per-prompt 20
+
 # Generate prompts only
 python main_framework.py --model gpt --objects car --prompt-only
 
@@ -108,15 +111,24 @@ python main_framework.py --model gpt --objects car --image-only
 
 ### Advanced Usage
 ```bash
-# Multiple objects with custom image count
+# Multiple objects with custom image count (generates 3 images per prompt)
 python main_framework.py --model replicate.imagen4 --objects car laptop cup --images-per-prompt 3
 
+# Large-scale generation (20 images per prompt with parallel processing)
+python main_framework.py --model replicate.flux-2-pro --objects car laptop backpack cup teddy_bear sofa clock toaster --images-per-prompt 20
+
 # Use Qwen Image model
-python main_framework.py --model replicate.qwen-image --objects sofa
+python main_framework.py --model replicate.qwen-image --objects sofa --images-per-prompt 10
 
 # Run comprehensive analysis
 python run_comprehensive_analysis.py
 ```
+
+### Image Generation Details
+- **Default**: 2 images per prompt
+- **Recommended for research**: 10-20 images per prompt for statistical significance
+- **Total images per object**: `10 prompts × images-per-prompt`
+- **Parallel processing**: Replicate models use 5 parallel workers for faster generation
 
 ## 📁 Project Structure
 
