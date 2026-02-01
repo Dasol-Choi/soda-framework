@@ -53,12 +53,8 @@ Our framework reveals significant demographic biases in AI-generated objects. Th
 
 ### **Replicate Models**
 - **SDXL**: High quality, fast speed, stable
-- **SD 3.5 Large**: Latest model, highest quality
 - **Imagen 4**: Google's latest model, no negative prompt needed
-- **FLUX Schnell**: Fastest, cheapest option
-- **FLUX Dev**: FLUX high quality version
 - **FLUX 2 Pro**: Latest FLUX model, highest quality
-- **SD 3 Medium**: Balanced performance
 - **Qwen Image**: Qwen's image generation model
 
 ## 🚀 Installation
