@@ -77,13 +77,17 @@ class ModelFactory:
                 selected_model=selected_model
             )
             
-            # Update folder structure if folder_name is provided
+            # Always update folder structure with correct folder name
             if 'folder_name' in kwargs:
                 folder_name = kwargs['folder_name']
-                generator.base_save_dir = str(PATHS.get_image_output_dir(folder_name, object_name))
-                generator.log_file = str(PATHS.get_log_file_path(folder_name, object_name))
-                generator.metadata_file = str(PATHS.get_metadata_file_path(folder_name, object_name))
-                generator.create_folder_structure()
+            else:
+                # Default to 'replicate' if no folder name specified
+                folder_name = 'replicate'
+            
+            generator.base_save_dir = str(PATHS.get_image_output_dir(folder_name, object_name))
+            generator.log_file = str(PATHS.get_log_file_path(folder_name, object_name))
+            generator.metadata_file = str(PATHS.get_metadata_file_path(folder_name, object_name))
+            generator.create_folder_structure()
             
             return generator
         else:
@@ -115,7 +119,9 @@ class ModelFactory:
                     'imagen4': 'Google Imagen 4',
                     'flux-schnell': 'FLUX Schnell',
                     'flux-dev': 'FLUX Dev',
-                    'sd3-medium': 'SD 3 Medium'
+                    'sd3-medium': 'SD 3 Medium',
+                    'flux-2-pro': 'FLUX 2 Pro',
+                    'qwen-image': 'Qwen Image'
                 }
             }
         }

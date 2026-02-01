@@ -57,7 +57,9 @@ Our framework reveals significant demographic biases in AI-generated objects. Th
 - **Imagen 4**: Google's latest model, no negative prompt needed
 - **FLUX Schnell**: Fastest, cheapest option
 - **FLUX Dev**: FLUX high quality version
+- **FLUX 2 Pro**: Latest FLUX model, highest quality
 - **SD 3 Medium**: Balanced performance
+- **Qwen Image**: Qwen's image generation model
 
 ## 🚀 Installation
 
@@ -82,13 +84,24 @@ REPLICATE_API_TOKEN=your_replicate_token_here
 
 ## ⚡ Quick Start
 
+### Supported Objects
+- car, laptop, backpack, cup, teddy_bear, sofa, clock, toaster
+
+### Demographic Categories
+- **Age groups**: young adults, middle-aged, elderly
+- **Genders**: men, women
+- **Ethnicities**: White, Black, Asian, Latinx
+
 ### Basic Usage
 ```bash
 # Generate prompts and images for a car object using GPT
 python main_framework.py --model gpt --objects car
 
-# Use Replicate with specific model
-python main_framework.py --model replicate.sdxl --objects car laptop
+# Use Replicate with specific model (FLUX 2 Pro)
+python main_framework.py --model replicate.flux-2-pro --objects car laptop
+
+# Generate for new objects
+python main_framework.py --model gpt --objects sofa clock toaster
 
 # Generate prompts only
 python main_framework.py --model gpt --objects car --prompt-only
@@ -101,6 +114,9 @@ python main_framework.py --model gpt --objects car --image-only
 ```bash
 # Multiple objects with custom image count
 python main_framework.py --model replicate.imagen4 --objects car laptop cup --images-per-prompt 3
+
+# Use Qwen Image model
+python main_framework.py --model replicate.qwen-image --objects sofa
 
 # Run comprehensive analysis
 python run_comprehensive_analysis.py

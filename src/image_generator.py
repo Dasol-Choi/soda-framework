@@ -21,13 +21,8 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-try:
-    import google.generativeai as genai
-    from google.generativeai import types
-    GOOGLE_AVAILABLE = True
-except (ImportError, TypeError) as e:
-    GOOGLE_AVAILABLE = False
-    print(f"Warning: Google Generative AI not available: {e}")
+# Google AI will be imported lazily in ImagenImageGenerator when needed
+GOOGLE_AVAILABLE = None  # Will be checked on demand
 
 try:
     import replicate
@@ -358,19 +353,24 @@ class ImagenImageGenerator(BaseImageGenerator):
         self.BATCH_SIZE = 2  # Generate only 2 at a time then rest
         self.BATCH_DELAY = 30  # Rest time between batches increased to 30 seconds
         
-        # Check Google AI availability
-        if not GOOGLE_AVAILABLE:
-            raise ImportError("Google Generative AI is not available. Please install google-generativeai>=0.1.0 or use a different model.")
+        # Import Google AI libraries only when needed (lazy import)
+        try:
+            import google.generativeai as genai
+            from google.generativeai import types
+            self.genai = genai
+            self.types = types
+        except (ImportError, TypeError) as e:
+            raise ImportError(f"Google Generative AI is not available: {e}. Please install google-generativeai>=0.1.0 or use a different model.")
         
         # Set Google API key
         if api_key:
-            genai.configure(api_key=api_key)
+            self.genai.configure(api_key=api_key)
         else:
             # Try to get from environment variable
             import os
             api_key = os.getenv("GEMINI_API_KEY")
             if api_key:
-                genai.configure(api_key=api_key)
+                self.genai.configure(api_key=api_key)
             else:
                 print("Warning: Google API key not provided. Please set GEMINI_API_KEY environment variable or pass api_key parameter.")
         
@@ -498,13 +498,10 @@ class ImagenImageGenerator(BaseImageGenerator):
         
         for attempt in range(max_retries):
             try:
-                if not GOOGLE_AVAILABLE:
-                    raise RuntimeError("Google Generative AI is not available")
-                
-                response = genai.GenerativeModel.generate_images(
+                response = self.genai.GenerativeModel.generate_images(
                     model='imagen-4.0-generate-preview-06-06',
                     prompt=prompt,
-                    config=types.GenerateImagesConfig(
+                    config=self.types.GenerateImagesConfig(
                         number_of_images=1,
                         aspect_ratio=self.ASPECT_RATIO
                     )
@@ -696,7 +693,7 @@ class ReplicateImageGenerator(BaseImageGenerator):
             self.base_save_dir = f"./{OUTPUT_BASE_DIR}/{self.model_name}_{object_name}_images"
             self.log_file = f"{self.base_save_dir}/metadata/generation_log.json"
             self.metadata_file = f"{self.base_save_dir}/metadata/image_metadata.csv"
-            self.create_folder_structure()
+            # Don't create folder structure here - it will be updated by model_factory
         else:
             # Initialize with default values to avoid AttributeError
             self.base_save_dir = f"./{OUTPUT_BASE_DIR}/default_images"
@@ -897,28 +894,24 @@ class ReplicateImageGenerator(BaseImageGenerator):
                 # Call Replicate
                 output = replicate.run(self.model_info['model_id'], input=model_input)
                 
-                # Imagen 4 returns FileOutput object
-                if "imagen-4" in self.model_info['model_id'].lower():
-                    # Handle FileOutput object for Imagen 4
-                    if output:
-                        # Extract URL from FileOutput object
-                        if hasattr(output, 'url'):
-                            image_url = output.url
-                        elif hasattr(output, '__str__'):
-                            image_url = str(output)
-                        else:
-                            return False, "Imagen 4 output format error"
-                    else:
-                        return False, "No Imagen 4 generation result"
+                # Handle FileOutput object (returned by Imagen 4, FLUX 2 Pro, etc.)
+                if hasattr(output, 'url'):
+                    # FileOutput object with url attribute
+                    image_url = output.url
+                elif hasattr(output, '__str__') and not isinstance(output, (list, str)):
+                    # FileOutput object that can be converted to string
+                    image_url = str(output)
+                elif isinstance(output, list) and len(output) > 0:
+                    # List of URLs (older models)
+                    image_url = output[0]
+                elif isinstance(output, str):
+                    # Direct URL string
+                    image_url = output
+                elif output:
+                    # Try to convert to string as last resort
+                    image_url = str(output)
                 else:
-                    # Existing processing for other models
-                    if output and len(output) > 0:
-                        if isinstance(output, list):
-                            image_url = output[0]
-                        else:
-                            image_url = output
-                    else:
-                        return False, "No image generation result"
+                    return False, "No image generation result"
                 
                 # Download from image URL
                 response = requests.get(image_url, timeout=60)

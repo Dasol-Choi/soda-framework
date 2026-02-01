@@ -140,6 +140,24 @@ class ModelConfigs:
             description="Balanced performance",
             use_negative=True,
             folder_category="diffusion"
+        ),
+        "7": ReplicateModelConfig(
+            key="7",
+            name="FLUX 2 Pro",
+            model_id="black-forest-labs/flux-2-pro",
+            cost_per_image=0.04,
+            description="Black Forest Labs FLUX 2 Pro model",
+            use_negative=True,
+            folder_category="flux"
+        ),
+        "8": ReplicateModelConfig(
+            key="8",
+            name="Qwen Image",
+            model_id="qwen/qwen-image",
+            cost_per_image=0.03,
+            description="Qwen image generation model",
+            use_negative=True,
+            folder_category="qwen"
         )
     }
     
@@ -150,7 +168,9 @@ class ModelConfigs:
         'imagen4': '3',
         'flux-schnell': '4',
         'flux-dev': '5',
-        'sd3-medium': '6'
+        'sd3-medium': '6',
+        'flux-2-pro': '7',
+        'qwen-image': '8'
     }
     
     @classmethod

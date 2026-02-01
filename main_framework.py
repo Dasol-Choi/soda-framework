@@ -167,11 +167,9 @@ def main():
                 # Use the same folder mapping logic for analysis
                 folder_mapping = {
                     'sdxl': 'diffusion',
-                    'sd35': 'diffusion', 
-                    'sd3-medium': 'diffusion',
                     'imagen4': 'imagen',
-                    'flux-schnell': 'flux',
-                    'flux-dev': 'flux'
+                    'flux-2-pro': 'flux',
+                    'qwen-image': 'qwen'
                 }
                 analysis_model_name = folder_mapping.get(replicate_submodel, replicate_submodel)
             else:
