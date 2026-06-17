@@ -84,7 +84,35 @@ class ModelConfigs:
         quality="high",
         size="1024x1024"
     )
-    
+
+    NANO_BANANA = ModelConfig(
+        name="nano-banana",
+        api_key_env="GEMINI_API_KEY",
+        quality="high",
+        size="1024x1024"
+    )
+
+    NANO_BANANA_2 = ModelConfig(
+        name="nano-banana-2",
+        api_key_env="GEMINI_API_KEY",
+        quality="high",
+        size="1024x1024"
+    )
+
+    NANO_BANANA_PRO = ModelConfig(
+        name="nano-banana-pro",
+        api_key_env="GEMINI_API_KEY",
+        quality="high",
+        size="1024x1024"
+    )
+
+    # Nano Banana model ID mapping
+    NANO_BANANA_MODELS = {
+        'nano-banana':     'gemini-2.5-flash-image',
+        'nano-banana-2':   'gemini-3.1-flash-image-preview',
+        'nano-banana-pro': 'gemini-3-pro-image-preview',
+    }
+
     # Replicate model configurations
     REPLICATE_MODELS = {
         "1": ReplicateModelConfig(
@@ -180,10 +208,18 @@ class ModelConfigs:
             'gpt': cls.GPT,
             'gemini': cls.GEMINI,
             'replicate': cls.REPLICATE,
-            'imagen': cls.IMAGEN
+            'imagen': cls.IMAGEN,
+            'nano-banana': cls.NANO_BANANA,
+            'nano-banana-2': cls.NANO_BANANA_2,
+            'nano-banana-pro': cls.NANO_BANANA_PRO,
         }
         return configs.get(model_name.lower(), cls.GPT)
-    
+
+    @classmethod
+    def get_nano_banana_model_id(cls, variant: str) -> str:
+        """Get Gemini model ID for a Nano Banana variant"""
+        return cls.NANO_BANANA_MODELS.get(variant, 'gemini-2.5-flash-image')
+
     @classmethod
     def get_all_configs(cls) -> Dict[str, ModelConfig]:
         """Get all model configurations"""
@@ -191,7 +227,10 @@ class ModelConfigs:
             'gpt': cls.GPT,
             'gemini': cls.GEMINI,
             'replicate': cls.REPLICATE,
-            'imagen': cls.IMAGEN
+            'imagen': cls.IMAGEN,
+            'nano-banana': cls.NANO_BANANA,
+            'nano-banana-2': cls.NANO_BANANA_2,
+            'nano-banana-pro': cls.NANO_BANANA_PRO,
         }
     
     @classmethod

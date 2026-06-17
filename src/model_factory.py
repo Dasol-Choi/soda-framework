@@ -9,10 +9,11 @@ from abc import ABC, abstractmethod
 from config.model_configs import ModelConfigs
 from config.paths import PATHS
 from .image_generator import (
-    BaseImageGenerator, 
-    GPTImageGenerator, 
-    ImagenImageGenerator, 
-    ReplicateImageGenerator
+    BaseImageGenerator,
+    GPTImageGenerator,
+    ImagenImageGenerator,
+    NanoBananaImageGenerator,
+    ReplicateImageGenerator,
 )
 
 class ModelFactory:
@@ -53,6 +54,13 @@ class ModelFactory:
                 object_name=object_name,
                 csv_file_path=csv_file_path,
                 api_key=kwargs.get('api_key')
+            )
+        elif model_name in ('nano-banana', 'nano-banana-2', 'nano-banana-pro'):
+            return NanoBananaImageGenerator(
+                object_name=object_name,
+                csv_file_path=csv_file_path,
+                api_key=kwargs.get('api_key'),
+                model_variant=model_name,
             )
         elif model_name == 'replicate':
             # Handle replicate sub-model
@@ -108,6 +116,24 @@ class ModelFactory:
                 'description': 'Google Imagen image generation',
                 'api_key_env': 'GOOGLE_API_KEY',
                 'sub_models': None
+            },
+            'nano-banana': {
+                'name': 'Nano Banana (gemini-2.5-flash-image)',
+                'description': 'Gemini native image generation — speed & efficiency',
+                'api_key_env': 'GEMINI_API_KEY',
+                'sub_models': None,
+            },
+            'nano-banana-2': {
+                'name': 'Nano Banana 2 (gemini-3.1-flash-image-preview)',
+                'description': 'Gemini native image generation — best all-round',
+                'api_key_env': 'GEMINI_API_KEY',
+                'sub_models': None,
+            },
+            'nano-banana-pro': {
+                'name': 'Nano Banana Pro (gemini-3-pro-image-preview)',
+                'description': 'Gemini native image generation — professional quality',
+                'api_key_env': 'GEMINI_API_KEY',
+                'sub_models': None,
             },
             'replicate': {
                 'name': 'Replicate Models',

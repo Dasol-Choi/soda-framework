@@ -82,13 +82,12 @@ def main():
             from src.image_generator import GPTImageGenerator
             generator = GPTImageGenerator()
         elif model_name == 'replicate':
-            # Replicate generator will be initialized per object
             generator = None
         elif model_name == 'imagen':
-            # Imagen generator will be initialized per object
+            generator = None
+        elif model_name in ('nano-banana', 'nano-banana-2', 'nano-banana-pro'):
             generator = None
         else:
-            # For other models, initialize per object
             generator = None
         
         if args.image_only:
@@ -172,6 +171,8 @@ def main():
                     'qwen-image': 'qwen'
                 }
                 analysis_model_name = folder_mapping.get(replicate_submodel, replicate_submodel)
+            elif model_name in ('nano-banana', 'nano-banana-2', 'nano-banana-pro'):
+                analysis_model_name = model_name
             else:
                 analysis_model_name = model_name
             

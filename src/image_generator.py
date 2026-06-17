@@ -1186,6 +1186,279 @@ class ReplicateImageGenerator(BaseImageGenerator):
         else:
             return None
 
+class NanoBananaImageGenerator(BaseImageGenerator):
+    """Image generator using Gemini Nano Banana models (new google-genai SDK)
+
+    Supported variants:
+        nano-banana     -> gemini-2.5-flash-image          (speed / efficiency)
+        nano-banana-2   -> gemini-3.1-flash-image-preview  (best all-round)
+        nano-banana-pro -> gemini-3-pro-image-preview      (professional / complex)
+    """
+
+    MODEL_IDS = {
+        'nano-banana':     'gemini-2.5-flash-image',
+        'nano-banana-2':   'gemini-3.1-flash-image-preview',
+        'nano-banana-pro': 'gemini-3-pro-image-preview',
+    }
+
+    def __init__(self, object_name: str = None, csv_file_path: str = None,
+                 api_key: str = None, model_variant: str = 'nano-banana'):
+        super().__init__(model_variant)
+        self.object_name = object_name
+        self.csv_file_path = csv_file_path
+        self.model_variant = model_variant
+        self.model_id = self.MODEL_IDS.get(model_variant, 'gemini-2.5-flash-image')
+
+        # Lazy import of new google-genai SDK
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+            self._genai = genai
+            self._types = genai_types
+        except ImportError as e:
+            raise ImportError(
+                f"google-genai is not installed: {e}. "
+                "Run: pip install google-genai"
+            )
+
+        resolved_key = api_key or os.getenv('GEMINI_API_KEY')
+        if resolved_key:
+            self._client = self._genai.Client(api_key=resolved_key)
+        else:
+            print("Warning: GEMINI_API_KEY not set. "
+                  "Set the environment variable or pass api_key=.")
+            self._client = self._genai.Client()
+
+        if object_name:
+            folder_name = model_variant  # e.g. "nano-banana-2"
+            self.base_save_dir = f"./{OUTPUT_BASE_DIR}/{folder_name}_{object_name}_images"
+            self.log_file = f"{self.base_save_dir}/metadata/generation_log.json"
+            self.metadata_file = f"{self.base_save_dir}/metadata/image_metadata.csv"
+            self.create_folder_structure()
+
+    def create_folder_structure(self):
+        folders = [
+            f"{self.base_save_dir}/L1_basic",
+            f"{self.base_save_dir}/L2_age",
+            f"{self.base_save_dir}/L2_gender",
+            f"{self.base_save_dir}/L2_ethnicity",
+            f"{self.base_save_dir}/failed_generations",
+            f"{self.base_save_dir}/metadata",
+        ]
+        os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
+        for folder in folders:
+            os.makedirs(folder, exist_ok=True)
+        print(f"📁 {self.object_name} image storage folder structure created")
+
+    def parse_demographic(self, demographic_str):
+        if pd.isna(demographic_str) or demographic_str in ('nan', None):
+            return None
+        try:
+            return ast.literal_eval(demographic_str) if isinstance(demographic_str, str) else demographic_str
+        except Exception:
+            return None
+
+    def get_save_path(self, row, image_num):
+        level = row['level']
+        demographic = self.parse_demographic(row.get('demographic'))
+
+        if level == 1:
+            folder_name, target_str = "L1_basic", "baseline"
+        elif level == 2 and demographic:
+            demo_type = demographic.get('type', 'unknown')
+            demo_value = demographic.get('value', 'unknown')
+            folder_name = f"L2_{demo_type}"
+            target_str = demo_value.replace(" ", "_").lower()
+        else:
+            folder_name = f"L{level}_unknown"
+            target_str = "unknown"
+
+        folder_path = os.path.join(self.base_save_dir, folder_name)
+        filename = "_".join([
+            f"L{level}",
+            f"idx{image_num:03d}",
+            f"img{image_num:02d}",
+            target_str,
+            datetime.now().strftime("%H%M%S"),
+        ]) + ".png"
+        return os.path.join(folder_path, filename)
+
+    def generate_single_image(self, prompt: str, output_path: str, max_retries: int = 3):
+        start_time = time.time()
+        for attempt in range(max_retries):
+            try:
+                response = self._client.models.generate_content(
+                    model=self.model_id,
+                    contents=[prompt],
+                    config=self._types.GenerateContentConfig(
+                        response_modalities=['IMAGE'],
+                    ),
+                )
+
+                image_saved = False
+                for part in response.parts:
+                    if part.inline_data is not None:
+                        img = part.as_image()
+                        img.save(output_path)
+                        image_saved = True
+                        break
+
+                generation_time = time.time() - start_time
+                if image_saved:
+                    return True, None, generation_time
+                else:
+                    return False, "No image in response", generation_time
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                wait_time = (2 ** attempt) * (10 if ("rate" in error_msg or "quota" in error_msg) else 1)
+                print(f"  ⚠️ Attempt {attempt + 1} failed: {str(e)[:100]}")
+                if attempt < max_retries - 1:
+                    print(f"  ⏳ Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+                else:
+                    generation_time = time.time() - start_time
+                    return False, str(e), generation_time
+
+    def load_prompts(self, csv_path=None):
+        csv_path = csv_path or self.csv_file_path
+        try:
+            df = pd.read_csv(csv_path)
+            print(f"📄 {len(df)} prompts loaded successfully")
+            return df
+        except Exception as e:
+            print(f"❌ CSV file load failed: {e}")
+            return None
+
+    def load_progress_log(self):
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r', encoding='utf-8') as f:
+                    log_data = json.load(f)
+                    log_data.setdefault("metadata", [])
+                    return log_data
+            except Exception:
+                pass
+        return {"completed": [], "failed": [], "metadata": []}
+
+    def save_progress_log(self, log_data):
+        try:
+            with open(self.log_file, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, ensure_ascii=False, indent=2)
+            metadata_log_path = os.path.join(self.base_save_dir, "metadata", "generation_log.json")
+            os.makedirs(os.path.dirname(metadata_log_path), exist_ok=True)
+            with open(metadata_log_path, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"❌ Log save failed: {e}")
+
+    def save_image_metadata(self, metadata_list):
+        try:
+            pd.DataFrame(metadata_list).to_csv(self.metadata_file, index=False)
+            print(f"📊 Metadata saved: {len(metadata_list)} items")
+        except Exception as e:
+            print(f"❌ Metadata save failed: {e}")
+
+    def generate_all_images(self):
+        df = self.load_prompts()
+        if df is None:
+            return []
+
+        log_data = self.load_progress_log()
+        completed_set = {(e['prompt_index'], e['image_number']) for e in log_data.get("completed", [])}
+
+        total_needed = len(df) * IMAGES_PER_PROMPT
+        total_completed = len(completed_set)
+
+        print(f"\n🚀 {self.object_name.upper()} image generation started")
+        print(f"🤖 Model: {self.model_id}  ({self.model_variant})")
+        print(f"📊 Total needed: {total_needed}, Completed: {total_completed}")
+        print(f"🎯 Images to generate: {total_needed - total_completed}")
+        print("-" * 60)
+
+        total_generated = total_failed = total_skipped = 0
+        start_time = time.time()
+
+        for idx, row in df.iterrows():
+            try:
+                prompt_text = str(row['prompt']).strip()
+                if not prompt_text or prompt_text.lower() in ['nan', 'none', 'null']:
+                    total_skipped += IMAGES_PER_PROMPT
+                    continue
+            except Exception:
+                total_skipped += IMAGES_PER_PROMPT
+                continue
+
+            level = row.get('level', 1)
+            demographic = self.parse_demographic(row.get('demographic'))
+
+            for img_num in range(1, IMAGES_PER_PROMPT + 1):
+                if (idx, img_num) in completed_set:
+                    total_skipped += 1
+                    continue
+
+                output_path = self.get_save_path(row, img_num)
+                if os.path.exists(output_path):
+                    total_skipped += 1
+                    continue
+
+                print(f"  🖼️ [{idx+1}/{len(df)}] L{level} img{img_num:02d} ...", end=" ", flush=True)
+                success, error, generation_time = self.generate_single_image(prompt_text, output_path)
+
+                metadata = {
+                    "prompt_index": idx,
+                    "image_number": img_num,
+                    "prompt": prompt_text,
+                    "level": level,
+                    "level_name": row.get('level_name', ''),
+                    "object": row.get('object', self.object_name),
+                    "object_category": row.get('object_category', ''),
+                    "demographic_type": demographic.get('type') if demographic else None,
+                    "demographic_value": demographic.get('value') if demographic else None,
+                    "file_path": output_path,
+                    "generation_time": datetime.now().isoformat(),
+                    "model": self.model_id,
+                    "model_variant": self.model_variant,
+                    "generation_duration_seconds": round(generation_time, 2),
+                    "success": success,
+                }
+
+                if success:
+                    total_generated += 1
+                    log_data["completed"].append(metadata)
+                    log_data["metadata"].append(metadata)
+                    print(f"✅ ({generation_time:.1f}s)")
+                else:
+                    total_failed += 1
+                    metadata['error'] = error
+                    log_data["failed"].append(metadata)
+                    print(f"❌ {error[:60]} ({generation_time:.1f}s)")
+
+                self.save_progress_log(log_data)
+                time.sleep(DELAY_BETWEEN_REQUESTS)
+
+        self.save_image_metadata(log_data["metadata"])
+        total_time = time.time() - start_time
+
+        print("\n" + "=" * 60)
+        print(f"🎉 {self.object_name.upper()} image generation completed!")
+        print(f"📊 Generated: {total_generated}  ❌ Failed: {total_failed}  ⏭️ Skipped: {total_skipped}")
+        print(f"⏱️ Total elapsed: {total_time:.1f}s")
+        print(f"📁 Save location: {self.base_save_dir}")
+        print("=" * 60)
+
+        return [m['file_path'] for m in log_data["metadata"] if m.get("success")]
+
+    def generate_image(self, prompt: str, object_name: str, demographic_info: Optional[Dict] = None) -> str:
+        output_path = self.get_save_path({
+            'level': 1 if demographic_info is None else 2,
+            'demographic': demographic_info,
+            'object': object_name,
+        }, 1)
+        success, error, _ = self.generate_single_image(prompt, output_path)
+        return output_path if success else None
+
+
 class UnifiedImageGenerator:
     """Main class to handle all image generation"""
     
