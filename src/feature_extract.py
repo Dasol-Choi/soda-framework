@@ -152,6 +152,8 @@ class ObjectBiasFeatureExtraction:
                     demo_value = "black"
                 elif "asian" in filename:
                     demo_value = "asian"
+                elif "latinx" in filename:
+                    demo_value = "latinx"
                 else:
                     demo_value = "unknown"
                 
