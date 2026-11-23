@@ -30,14 +30,14 @@ class BaselineVsDemographicsAnalyzer:
         self.demographic_groups = [
             "young_adults", "middle_aged", "elderly",  # Age (3)
             "men", "women",                            # Gender (2)
-            "white", "black", "asian"                  # Ethnicity (3)
+            "white", "black", "asian", "latinx"        # Ethnicity (4)
         ]
         
         
         print(f"Analysis target folder: {self.base_output_dir}")
         print(f"Detected models: {', '.join(self.models)}")
         print(f"Detected objects: {', '.join(self.objects)}")
-        print(f"8 Demographics: {', '.join(self.demographic_groups)}")
+        print(f"{len(self.demographic_groups)} Demographics: {', '.join(self.demographic_groups)}")
         print(f"Including all features - no exclusions")
     
     def detect_available_models_and_objects(self):
